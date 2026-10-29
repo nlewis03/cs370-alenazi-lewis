@@ -1,51 +1,48 @@
 
-# CS370 Term Project - Milestone 2 Design Document
+# Milestone 2 Design Document: Fridge Door & Temperature Monitor
 
 Abdulrahman Alenazi and Nailah Lewis
 
-## 1. Project Overview
+## Project Overview
 
-For our term project, we decided to build a fridge door and temperature monitor using a Raspberry Pi. I liked this idea because sometimes I forget to close the fridge door completely, especially when I am in a hurry. If the door stays open, the temperature can increase, food can spoil, and electricity can be wasted.
+For our term project, we decided to build a fridge door and temperature monitor using a Raspberry Pi. I liked this idea because sometimes we forget to close the fridge door completely, especially when I am in a hurry. If the door stays open, the temperature can increase, food can spoil, and electricity can be wasted.
 
 Our device will use two sensors. The first is a magnetic reed switch that detects whether the fridge door is open or closed. The second is a temperature sensor that measures the temperature inside the fridge.
 
-I want our program to use both readings together. For example, opening the fridge for a few seconds is normal, but leaving it open for several minutes while the temperature increases could be a problem. We also want to check how long the fridge takes to cool down after the door closes.
+We want our program to use both readings together. For example, opening the fridge for a few seconds is normal, but leaving it open for several minutes while the temperature increases could be a problem. We also want to check how long the fridge takes to cool down after the door closes.
 
 The main goal is to make something useful that can monitor the fridge automatically and save information for us to review later.
 
-## 2. System Architecture
+## 1. Architecture
 
 We are using a Raspberry Pi and writing our programs in C. Our plan is to use separate processes for the two sensors so they can work independently.
 
 The door sensor will check its GPIO input every 50 milliseconds. The temperature sensor will take a reading about every 2 seconds, depending on the sensor model.
 
-Both processes will send their readings to a main hub using Unix domain sockets. We chose sockets because all the processes will run on the same Raspberry Pi.
+Both processes will send their readings to the storage layer.
 
-### Architecture Diagram
+
 
     Door Sensor ----\
                      \
-                      Main Hub ---> Analysis
-                     /                 |
-    Temperature ----/                  v
-       Sensor                       Storage
-                                      |
-                                      v
-                                  Text Menu
+                      -- > Storage Layer
+                     /            |
+    Temperature ----/             v
+       Sensor              Text/CLI Interface
+                                      
+        Supervisor
+        - Monitors and restarts processes (if they die)
 
-    Supervisor ---> Monitors and restarts processes
-
-The main hub will collect readings and organize them using timestamps. The analysis process will look for things like long door openings and unusual temperature changes.
 
 We also plan to make a simple text menu that lets us check the current readings, recent events, and saved information.
 
-## 3. Operating Systems Mechanisms
+## 2. Mechanism Mapping
 
 For this project, we chose mechanisms D and E from Section 3.2.
 
 ### Mechanism D - Custom Storage Layer
 
-I want the device to save readings even when nobody is watching it. We plan to build a small append-only storage system in C.
+We want the device to save readings even when nobody is watching it. We plan to build a small append-only storage system in C.
 
 Each record will include a timestamp, sensor type, and reading or event. We will also include record lengths and checksums to help detect damaged or incomplete records.
 
@@ -53,7 +50,7 @@ Instead of writing every reading separately, we plan to use a buffer and write g
 
 If the Raspberry Pi loses power, the program will check the log during startup. It will keep complete, valid records and remove any incomplete record at the end.
 
-This is important because I do not want a power interruption to erase everything the device recorded.
+This is important because we do not want a power interruption to erase everything the device recorded.
 
 ### Mechanism E - Multi-Process Architecture
 
@@ -67,26 +64,21 @@ For example, if the temperature process stops, the door sensor should continue w
 
 This design should make the device more reliable during long periods of use.
 
-## 4. Failure Modes and Recovery
+## 3. Failure-Mode Table
 
 We know that problems can happen while the device is running, so we made a plan for detecting and handling them.
 
 | Problem | Detection | Recovery |
 |---|---|---|
-| Door sensor issue | Incorrect response during testing | Check wiring and report uncertain status |
-| Temperature sensor failure | Invalid or missing readings | Retry and mark reading unavailable |
-| Sensor process crashes | Supervisor detects process exit | Log failure and restart |
-| Hub stops receiving data | Missing updates or timeout | Reconnect or restart |
-| Storage becomes full | Write operation fails | Report error and stop claiming data was saved |
-| Power interruption | Startup log validation | Recover valid records |
+| Door sensor issue | No state change over implausibly long window, or read returns invalid value | Mark status as "uncertain", keep running |
+| Temperature sensor failure | Read returns error/timeout | Retry once, then mark reading unavailable |
+| Sensor process crashes | Supervisor's waitpid detects exit | Supervisor restarts the process |
+| Hub stops receiving data | Missing updates past expected interval | Reconnect socket or restart hub |
+| Storage becomes full | fwrite/fsync returns error | Stop logging that stream, alert via interface |
+| Power interruption | Startup validation finds incomplete trailing record | Truncate incomplete record, keep valid prior records |
 
-One limitation of the magnetic reed switch is that a disconnected wire might look like an open door. We cannot always identify that problem from the signal alone.
 
-We will test the sensor by moving the magnet toward and away from the switch and comparing the output with its actual position.
-
-We will also stop a sensor process on purpose to check whether the supervisor can restart it.
-
-## 5. Storage Design
+## 4. Storage and data
 
 Our storage system will keep information about the fridge throughout the day.
 
@@ -108,9 +100,11 @@ We plan to use an append-only binary log with record lengths and checksums. Duri
 
 Our initial goal is to keep at least seven days of data, depending on available storage. Older records can be archived or removed when necessary.
 
-## 6. Hardware Limitations
+## 5. Constraints and substitutions 
 
 One challenge is that we are using inexpensive sensors, so their readings will not always be perfect.
+
+One limitation of the magnetic reed switch is that a disconnected wire might look like an open door. We cannot always identify that problem from the signal alone.
 
 The magnetic reed switch only detects whether the magnet is close enough to activate it. It cannot measure exactly how far the fridge door is open.
 
@@ -124,34 +118,27 @@ We will need to confirm the GPIO connections and required libraries before testi
 
 If we use recorded or simulated data for testing, we will clearly identify it instead of presenting it as live sensor output.
 
-## 7. Evaluation Plan
+## 6. Evaluation Plan
 
 We want to test whether our device actually works instead of only checking whether the programs run.
 
-| Test | Our Goal |
-|---|---|
-| Open and close the door 20 times | At least 95% correct detection |
-| Door response time | Less than 250 milliseconds |
-| Temperature comparison | Within 1.5 degrees Celsius |
-| Stop a sensor process | Restart within 5 seconds |
-| Interrupt a storage write | Recover valid records |
-| CPU usage | Under 10% average total |
-| Memory usage | No continuous increase |
-| Continuous operation | 48 hours without unrecovered failures |
+Latency or timing: We will measure time from a door-state change (magnet near/far) to the event being written to the storage log. Our target is under 1 second, measured under both idle and loaded CPU.
 
-For the door sensor, we will move the magnet close to and away from the switch 20 times and compare the results.
+Resource footprint: We will track CPU utilization and resident memory for each process (door, temp, supervisor) at steady state over the full 48 hours
 
-For temperature, we will compare the sensor with another thermometer if one is available.
+Domain metric: For the door sensor, we will move the magnet close to and away from the switch 20 times and compare the results. Our target for this would be 100% detection rate (20/20). For temperature, we will compare the sensor readings with another thermometer and report the average error.
 
-We will also test longer door openings and observe how the temperature changes after closing the door.
+Fault injection: We will unplug the door and temp sensors seperately mid-run, and kill -9 each sensor process while running. We will also test longer door openings and observe how the temperature changes after closing the door.
 
-During the 48-hour test, we plan to record hourly updates, process memory usage, and errors. These are our testing goals, not results we have already achieved.
+Crash-Consistency (mechanism D): We will kill the program mid-write, restart, confirm log integrity.
 
-## 8. Team Responsibilities
+Correlation check: We will test a scenario where the door is left open for an extended period of time and confirm that it correlates the actual door-open duration with the resulting temperature rise rather than just logging unrelated values.
+
+## 7. Ownership Map
 
 ### My Part - Abdulrahman
 
-I am responsible for writing the Milestone 2 design document and developing the magnetic door sensor program in C.
+I am responsible for writing a larger part of the Milestone 2 design document and developing the magnetic door sensor program in C.
 
 I am using VS Code to write the program. It reads the GPIO input, checks whether the door is open or closed, and prints the status with a timestamp.
 
@@ -161,21 +148,23 @@ After the door sensor is working, I will help connect it to the main system and 
 
 ### Nailah's Part
 
-Nailah has the Raspberry Pi and both sensors. She is responsible for connecting the hardware and developing the temperature sensor code.
+I am responsible for purchasing and assembling all of the hardware, developing the temperature sensor code, editing the Milestone 2 document, and completing the demo video for M3.
 
-She will also test my door sensor code on the Raspberry Pi and record a video showing the sensors working.
+I will also work on implementing the storage layer, supervisor, and initial interface/CLI. 
 
-We will work together on the main hub, storage, process supervision, and final testing.
+We will work together on further improvements to interface and final testing.
 
-## 9. Development Tools and AI Usage
+## 8. AI-Use Plan
 
-We are using VS Code, GitHub, and C for our project. I am using ChatGPT to help organize the design document and work through the door sensor setup.
+We are using VS Code, GitHub, and C for our project. 
 
-We also plan to use Claude Code to review code, understand Linux system calls, and help debug problems. We will keep the required original Claude Code transcripts and document important development decisions in `PROMPTLOG.md`.
+Disclosure: In an honest mistake, Abdulrahman initially used ChatGPT to assist in formatting an early draft of this design document, he was unaware that we needed to utilize Claude Code. That draft is not used for the final submisison.
 
-Our actual Raspberry Pi device will not depend on ChatGPT, Claude Code, or another online AI service. The monitoring and storage programs will run locally.
+We also plan to use Claude Code to plan architecture, review code, understand Linux system calls, draft boilerplate, and help debug problems. We will keep the required original individual Claude Code transcripts as well as document important development decisions in our `PROMPTLOG.md` files and keep both under our individual folders.
 
-## 10. Next Steps
+Our actual Raspberry Pi device will not depend on Claude Code, or another online AI service. The monitoring and storage programs will run locally.
+
+## 9. Next Steps
 
 Our next step is to get both sensors working on the Raspberry Pi and collect real readings.
 
