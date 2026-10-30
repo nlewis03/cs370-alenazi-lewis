@@ -5,7 +5,7 @@ Abdulrahman Alenazi and Nailah Lewis
 
 ## Project Overview
 
-For our term project, we decided to build a fridge door and temperature monitor using a Raspberry Pi. I liked this idea because sometimes we forget to close the fridge door completely, especially when I am in a hurry. If the door stays open, the temperature can increase, food can spoil, and electricity can be wasted.
+For our term project, we decided to build a fridge door and temperature monitor using a Raspberry Pi. I liked this idea because sometimes we forget to close the fridge door completely, especially when we are in a hurry. If the door stays open, the temperature can increase, food can spoil, and electricity can be wasted.
 
 Our device will use two sensors. The first is a magnetic reed switch that detects whether the fridge door is open or closed. The second is a temperature sensor that measures the temperature inside the fridge.
 
@@ -17,7 +17,7 @@ The main goal is to make something useful that can monitor the fridge automatica
 
 We are using a Raspberry Pi and writing our programs in C. Our plan is to use separate processes for the two sensors so they can work independently.
 
-The door sensor will check its GPIO input every 50 milliseconds. The temperature sensor will take a reading about every 2 seconds, depending on the sensor model.
+The door sensor will check its GPIO input every 50 milliseconds. The temperature sensor (DS18B20) communicates via the 1-Wire Protocol over a single GPIO data pin and will take a reading about every 2 seconds.
 
 Both processes will send their readings to the storage layer.
 
@@ -54,7 +54,7 @@ This is important because we do not want a power interruption to erase everythin
 
 ### Mechanism E - Multi-Process Architecture
 
-Our second mechanism is using multiple processes. We chose this because I do not want one sensor problem to stop the entire device.
+Our second mechanism is using multiple processes. We chose this because we do not want one sensor problem to stop the entire device.
 
 The door sensor and temperature sensor will run separately. A hub will receive their readings through Unix domain sockets.
 

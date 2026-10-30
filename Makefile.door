@@ -1,9 +1,12 @@
-CC = gcc
-CFLAGS = -std=c17 -Wall -Wextra -Werror -D_DEFAULT_SOURCE
-LDLIBS = -lgpiod
-
-door_sensor: src/capture/door_sensor.c
-	$(CC) $(CFLAGS) -o door_sensor src/capture/door_sensor.c $(LDLIBS)
-
-clean:
-	rm -f door_sensor
+# Superseded by the top-level Makefile, which now builds both sensors.
+# Kept here for reference; not used in the build.
+#
+# CC = gcc
+# CFLAGS = -std=c17 -Wall -Wextra -Werror -D_DEFAULT_SOURCE
+# LDLIBS = -lgpiod
+#
+# door_sensor: src/capture/door_sensor.c
+# 	$(CC) $(CFLAGS) -o door_sensor src/capture/door_sensor.c $(LDLIBS)
+#
+# clean:
+# 	rm -f door_sensor
